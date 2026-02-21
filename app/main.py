@@ -42,8 +42,12 @@ templates_dir = Path(__file__).parent / "templates"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("A/P Anomaly Detector starting up — initializing database tables")
-    init_db()
-    logger.info("Database ready")
+    try:
+        init_db()
+        logger.info("Database ready")
+    except Exception as e:
+        # Don't block startup: server must bind so /health passes (e.g. Railway healthcheck)
+        logger.warning("Database init failed (server will start anyway): %s", e)
     yield
     logger.info("A/P Anomaly Detector shutting down")
 
