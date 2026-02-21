@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>A/P Anomaly Detector — Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --success: #3fb950;
+      --warning: #d29922;
+      --danger: #f85149;
+      --yellow: #e3b341;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; line-height: 1.5; }
+    .container { max-width: 1100px; margin: 0 auto; padding: 2rem; }
+    h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.25rem; }
+    .tagline { color: var(--muted); font-size: 0.9rem; margin-bottom: 2rem; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem; }
+    .card h2 { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; margin-top: 1rem; }
+    .stat { font-family: 'JetBrains Mono', monospace; }
+    .stat-value { font-size: 1.6rem; font-weight: 600; color: var(--accent); }
+    .stat-label { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+    .actions { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem; }
+    .btn { font-family: 'DM Sans', sans-serif; padding: 0.45rem 1rem; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; font-size: 0.875rem; transition: background 0.15s, border-color 0.15s; }
+    .btn:hover { background: var(--border); border-color: var(--muted); }
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: #000; font-weight: 600; }
+    .btn-primary:hover { opacity: 0.88; background: var(--accent); }
+    .btn-sm { padding: 0.25rem 0.6rem; font-size: 0.78rem; }
+    .btn-danger { border-color: var(--danger); color: var(--danger); }
+    .btn-danger:hover { background: rgba(248,81,73,0.12); }
+    .btn-warn { border-color: var(--yellow); color: var(--yellow); }
+    .btn-warn:hover { background: rgba(227,179,65,0.12); }
+    input, select { padding: 0.45rem 0.6rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 0.875rem; font-family: inherit; }
+    input:focus, select:focus { outline: none; border-color: var(--accent); }
+    .form-row { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; }
+    .form-row label { min-width: 110px; color: var(--muted); font-size: 0.875rem; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 0.55rem 0.6rem; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.875rem; }
+    th { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+    tr:hover td { background: rgba(88,166,255,0.04); cursor: pointer; }
+    .badge { display: inline-block; padding: 0.18rem 0.5rem; border-radius: 4px; font-size: 0.72rem; font-weight: 600; }
+    .badge-high { background: rgba(248,81,73,0.18); color: var(--danger); }
+    .badge-medium { background: rgba(210,153,34,0.18); color: var(--warning); }
+    .badge-low { background: rgba(63,185,80,0.18); color: var(--success); }
+    .badge-open { background: rgba(248,81,73,0.15); color: var(--danger); }
+    .badge-acknowledged { background: rgba(227,179,65,0.15); color: var(--yellow); }
+    .badge-dismissed { background: rgba(139,148,158,0.15); color: var(--muted); }
+    .empty { color: var(--muted); font-size: 0.9rem; padding: 2.5rem; text-align: center; }
+    .filter-tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: center; }
+    .tab { padding: 0.3rem 0.8rem; border-radius: 20px; border: 1px solid var(--border); cursor: pointer; font-size: 0.82rem; background: transparent; color: var(--muted); transition: all 0.15s; }
+    .tab.active { border-color: var(--accent); color: var(--accent); background: rgba(88,166,255,0.08); }
+    .tab:hover:not(.active) { border-color: var(--muted); color: var(--text); }
+    .pagination { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.75rem; font-size: 0.85rem; color: var(--muted); }
+    .code-block { font-family: 'JetBrains Mono', monospace; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem 0.75rem; font-size: 0.82rem; color: var(--accent); word-break: break-all; cursor: pointer; position: relative; }
+    .code-block:hover::after { content: 'Click to copy'; position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 0.7rem; color: var(--muted); font-family: 'DM Sans', sans-serif; }
+    .api-key-row { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem; }
+    .api-key-row label { min-width: 110px; color: var(--muted); font-size: 0.875rem; }
+    .section-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
+    .last-sync { font-size: 0.78rem; color: var(--muted); }
+
+    /* Modal */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 100; justify-content: center; align-items: center; }
+    .modal-overlay.open { display: flex; }
+    .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.5rem; max-width: 600px; width: 95%; max-height: 80vh; overflow-y: auto; }
+    .modal h3 { margin-bottom: 0.75rem; font-size: 1rem; }
+    .modal pre { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem; font-size: 0.78rem; white-space: pre-wrap; word-break: break-word; color: var(--muted); margin-top: 0.5rem; }
+    .modal-close { float: right; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1.2rem; padding: 0; }
+    .modal dl { display: grid; grid-template-columns: auto 1fr; gap: 0.4rem 1rem; font-size: 0.875rem; }
+    .modal dt { color: var(--muted); white-space: nowrap; }
+    .modal dd { color: var(--text); }
+
+    /* Toast */
+    .toast { position: fixed; bottom: 1.5rem; right: 1.5rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 1.25rem; font-size: 0.875rem; z-index: 200; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>A/P Anomaly Detector</h1>
+    <p class="tagline">Read-only audit layer — find duplicate invoices, price creep, and leaks.</p>
+
+    <!-- Setup -->
+    <div class="card">
+      <h2>Setup</h2>
+      <div class="form-row">
+        <label>Tenant Name</label>
+        <input type="text" id="tenantName" placeholder="My Company" style="width:200px;" />
+        <input type="email" id="alertEmail" placeholder="alert@example.com (optional)" style="width:240px;" />
+        <button class="btn btn-primary" onclick="createTenant()">Create Tenant</button>
+      </div>
+      <div class="form-row" style="margin-top:0.75rem;">
+        <label>Tenant ID</label>
+        <input type="number" id="tenantId" value="" placeholder="1" style="width:80px;" />
+        <button class="btn" onclick="loadAll()">Load Tenant</button>
+      </div>
+      <div class="api-key-row" style="margin-top:0.75rem;">
+        <label>API Key</label>
+        <div class="code-block" id="apiKeyDisplay" onclick="copyApiKey()" title="Click to copy">—</div>
+      </div>
+    </div>
+
+    <!-- QBO Connect -->
+    <div class="card">
+      <h2>QuickBooks Connection</h2>
+      <div class="form-row">
+        <label>Realm ID</label>
+        <input type="text" id="realmId" placeholder="QBO company ID" style="width:200px;" />
+      </div>
+      <div class="form-row">
+        <label>Access Token</label>
+        <input type="password" id="accessToken" placeholder="From OAuth callback" style="flex:1;max-width:400px;" />
+      </div>
+      <div class="form-row">
+        <label>Refresh Token</label>
+        <input type="password" id="refreshToken" placeholder="From OAuth callback" style="flex:1;max-width:400px;" />
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" onclick="connectQbo()">Connect QBO</button>
+      </div>
+    </div>
+
+    <!-- Pipeline -->
+    <div class="card">
+      <h2>Pipeline</h2>
+      <div class="actions">
+        <button class="btn btn-primary" onclick="sync()">1. Sync Data</button>
+        <button class="btn btn-primary" onclick="detect()">2. Run Detection</button>
+      </div>
+      <div id="lastSync" class="last-sync" style="margin-top:0.5rem;"></div>
+    </div>
+
+    <!-- Dashboard Stats -->
+    <div class="card">
+      <div class="section-header">
+        <h2 style="margin-bottom:0;">Dashboard</h2>
+        <button class="btn btn-sm" onclick="loadAll()">Refresh</button>
+      </div>
+      <div id="stats" class="stats"></div>
+    </div>
+
+    <!-- Anomalies -->
+    <div class="card">
+      <div class="section-header" style="margin-bottom:0.75rem;">
+        <h2 style="margin-bottom:0;">Anomalies</h2>
+        <button class="btn btn-sm" onclick="exportCsv()">Export CSV</button>
+      </div>
+      <div class="filter-tabs">
+        <button class="tab active" data-status="open" onclick="setTab(this,'open')">Open</button>
+        <button class="tab" data-status="acknowledged" onclick="setTab(this,'acknowledged')">Acknowledged</button>
+        <button class="tab" data-status="dismissed" onclick="setTab(this,'dismissed')">Dismissed</button>
+        <button class="tab" data-status="all" onclick="setTab(this,'all')">All</button>
+      </div>
+      <div id="anomalies"><div class="empty">Load a tenant and run detection to see anomalies.</div></div>
+      <div class="pagination" id="pagination"></div>
+    </div>
+  </div>
+
+  <!-- Detail Modal -->
+  <div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+    <div class="modal" id="modal">
+      <button class="modal-close" onclick="closeModalDirect()">✕</button>
+      <h3 id="modalTitle">Anomaly Detail</h3>
+      <dl id="modalBody"></dl>
+      <pre id="modalMeta"></pre>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const API = '/api';
+    let currentApiKey = '';
+    let currentStatus = 'open';
+    let currentPage = 0;
+    const PAGE_SIZE = 25;
+
+    function tenantId() { return document.getElementById('tenantId').value || ''; }
+
+    function apiHeaders() {
+      const h = { 'Content-Type': 'application/json' };
+      if (currentApiKey) h['X-API-Key'] = currentApiKey;
+      return h;
+    }
+
+    function showToast(msg, duration = 2500) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), duration);
+    }
+
+    async function createTenant() {
+      const name = document.getElementById('tenantName').value.trim() || 'Demo Company';
+      const alertEmail = document.getElementById('alertEmail').value.trim() || null;
+      const body = { name };
+      if (alertEmail) body.alert_email = alertEmail;
+      const r = await fetch(`${API}/tenants`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) { showToast('Failed to create tenant'); return; }
+      const t = await r.json();
+      document.getElementById('tenantId').value = t.id;
+      currentApiKey = t.api_key || '';
+      document.getElementById('apiKeyDisplay').textContent = currentApiKey || '—';
+      showToast(`Tenant #${t.id} created. API key saved.`);
+      loadAll();
+    }
+
+    function copyApiKey() {
+      if (!currentApiKey) return;
+      navigator.clipboard.writeText(currentApiKey).then(() => showToast('API key copied!'));
+    }
+
+    async function connectQbo() {
+      const tid = tenantId();
+      if (!tid || !currentApiKey) { showToast('Load a tenant first'); return; }
+      const realm = document.getElementById('realmId').value.trim();
+      const access = document.getElementById('accessToken').value.trim();
+      const refresh = document.getElementById('refreshToken').value.trim();
+      if (!realm || !access || !refresh) { showToast('Enter Realm ID, Access Token, Refresh Token'); return; }
+      const r = await fetch(`${API}/tenants/${tid}/connect-qbo`, {
+        method: 'POST',
+        headers: apiHeaders(),
+        body: JSON.stringify({ realm_id: realm, access_token: access, refresh_token: refresh }),
+      });
+      if (r.ok) showToast('QuickBooks connected!');
+      else showToast('Connection failed — check API key');
+    }
+
+    async function sync() {
+      const tid = tenantId();
+      if (!tid) { showToast('Enter a Tenant ID first'); return; }
+      showToast('Syncing…', 60000);
+      const r = await fetch(`${API}/tenants/${tid}/sync`, { method: 'POST', headers: apiHeaders() });
+      if (!r.ok) { showToast('Sync failed — check API key and QBO connection'); return; }
+      const d = await r.json();
+      const now = new Date().toLocaleTimeString();
+      document.getElementById('lastSync').textContent = `Last sync: ${now} — ${d.vendors} vendors, ${d.bills} bills, ${d.payments} payments`;
+      showToast(`Synced: ${d.vendors} vendors, ${d.bills} bills`);
+      loadAll();
+    }
+
+    async function detect() {
+      const tid = tenantId();
+      if (!tid) { showToast('Enter a Tenant ID first'); return; }
+      showToast('Running detection…', 60000);
+      const r = await fetch(`${API}/tenants/${tid}/detect`, { method: 'POST', headers: apiHeaders() });
+      if (!r.ok) { showToast('Detection failed — check API key'); return; }
+      const d = await r.json();
+      showToast(`Found ${d.anomalies_found} new anomalies`);
+      loadAll();
+    }
+
+    async function loadAll() {
+      const tid = tenantId();
+      if (!tid) return;
+      // Try to get API key from tenant if not set
+      if (!currentApiKey) {
+        const r = await fetch(`${API}/tenants/${tid}`);
+        if (r.ok) {
+          const t = await r.json();
+          if (t.api_key) {
+            currentApiKey = t.api_key;
+            document.getElementById('apiKeyDisplay').textContent = currentApiKey;
+          }
+        }
+      }
+      loadDashboard();
+      loadAnomalies();
+    }
+
+    async function loadDashboard() {
+      const tid = tenantId();
+      if (!tid || !currentApiKey) return;
+      const r = await fetch(`${API}/tenants/${tid}/dashboard`, { headers: apiHeaders() });
+      if (!r.ok) return;
+      const d = await r.json();
+      document.getElementById('stats').innerHTML = `
+        <div class="stat"><div class="stat-value">${d.vendor_count}</div><div class="stat-label">Vendors</div></div>
+        <div class="stat"><div class="stat-value">${d.bill_count}</div><div class="stat-label">Bills</div></div>
+        <div class="stat"><div class="stat-value">${d.anomaly_count}</div><div class="stat-label">Total Anomalies</div></div>
+        <div class="stat"><div class="stat-value">$${Number(d.total_anomaly_amount).toLocaleString('en-US', {maximumFractionDigits:0})}</div><div class="stat-label">Amount at Risk</div></div>
+        <div class="stat"><div class="stat-value">${d.high_confidence_count}</div><div class="stat-label">Alert-Worthy</div></div>
+      `;
+    }
+
+    async function loadAnomalies() {
+      const tid = tenantId();
+      if (!tid || !currentApiKey) return;
+      const skip = currentPage * PAGE_SIZE;
+      const r = await fetch(
+        `${API}/tenants/${tid}/anomalies?status=${currentStatus}&limit=${PAGE_SIZE}&offset=${skip}`,
+        { headers: apiHeaders() },
+      );
+      if (!r.ok) return;
+      const list = await r.json();
+      const el = document.getElementById('anomalies');
+      const pag = document.getElementById('pagination');
+
+      if (!list.length && currentPage === 0) {
+        el.innerHTML = `<div class="empty">No ${currentStatus === 'all' ? '' : currentStatus + ' '}anomalies found.<br><span style="font-size:0.8rem;margin-top:0.5rem;display:block;">Run sync + detection to get started.</span></div>`;
+        pag.innerHTML = '';
+        return;
+      }
+
+      el.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>Vendor</th><th>Bill #</th><th>Type</th><th>Severity</th>
+              <th>Amount</th><th>Confidence</th><th>Status</th><th>Description</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${list.map(a => `
+              <tr onclick="showDetail(${JSON.stringify(JSON.stringify(a))})">
+                <td>${a.vendor_name || '—'}</td>
+                <td>${a.bill_number || '—'}</td>
+                <td>${a.anomaly_type.replace(/_/g,' ')}</td>
+                <td><span class="badge badge-${a.severity}">${a.severity}</span></td>
+                <td>$${a.amount != null ? Number(a.amount).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}</td>
+                <td>${a.confidence_score != null ? Math.round(a.confidence_score*100)+'%' : '—'}</td>
+                <td><span class="badge badge-${a.status}">${a.status}</span></td>
+                <td style="max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${(a.description||'').replace(/"/g,'&quot;')}">${a.description || '—'}</td>
+                <td onclick="event.stopPropagation()">
+                  ${a.status !== 'acknowledged' ? `<button class="btn btn-sm btn-warn" onclick="updateStatus(${a.id},'acknowledged')">Ack</button> ` : ''}
+                  ${a.status !== 'dismissed' ? `<button class="btn btn-sm btn-danger" onclick="updateStatus(${a.id},'dismissed')">Dismiss</button>` : ''}
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+
+      // Pagination controls
+      const hasPrev = currentPage > 0;
+      const hasNext = list.length === PAGE_SIZE;
+      pag.innerHTML = `
+        <button class="btn btn-sm" onclick="prevPage()" ${hasPrev ? '' : 'disabled style="opacity:.4;"'}>← Prev</button>
+        <span>Page ${currentPage + 1}</span>
+        <button class="btn btn-sm" onclick="nextPage()" ${hasNext ? '' : 'disabled style="opacity:.4;"'}>Next →</button>
+      `;
+    }
+
+    function setTab(el, status) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      el.classList.add('active');
+      currentStatus = status;
+      currentPage = 0;
+      loadAnomalies();
+    }
+
+    function prevPage() { if (currentPage > 0) { currentPage--; loadAnomalies(); } }
+    function nextPage() { currentPage++; loadAnomalies(); }
+
+    async function updateStatus(anomalyId, status) {
+      const tid = tenantId();
+      const notes = status === 'dismissed' ? (prompt('Resolution notes (optional):') || null) : null;
+      const body = { status };
+      if (notes) body.resolution_notes = notes;
+      const r = await fetch(`${API}/tenants/${tid}/anomalies/${anomalyId}`, {
+        method: 'PATCH',
+        headers: apiHeaders(),
+        body: JSON.stringify(body),
+      });
+      if (r.ok) {
+        showToast(`Anomaly ${status}`);
+        loadAnomalies();
+        loadDashboard();
+      } else {
+        showToast('Update failed');
+      }
+    }
+
+    function showDetail(jsonStr) {
+      const a = JSON.parse(jsonStr);
+      document.getElementById('modalTitle').textContent = `${a.anomaly_type.replace(/_/g,' ')} — ${a.severity} severity`;
+      document.getElementById('modalBody').innerHTML = `
+        <dt>ID</dt><dd>#${a.id}</dd>
+        <dt>Vendor</dt><dd>${a.vendor_name || '—'}</dd>
+        <dt>Bill #</dt><dd>${a.bill_number || '—'}</dd>
+        <dt>Amount</dt><dd>$${a.amount != null ? Number(a.amount).toLocaleString('en-US',{minimumFractionDigits:2}) : '—'}</dd>
+        <dt>Confidence</dt><dd>${a.confidence_score != null ? Math.round(a.confidence_score*100)+'%' : '—'}</dd>
+        <dt>Status</dt><dd>${a.status}</dd>
+        <dt>Created</dt><dd>${new Date(a.created_at).toLocaleString()}</dd>
+        <dt>Description</dt><dd>${a.description || '—'}</dd>
+        ${a.resolution_notes ? `<dt>Notes</dt><dd>${a.resolution_notes}</dd>` : ''}
+      `;
+      let meta = {};
+      try { meta = JSON.parse(a.metadata_json || '{}'); } catch(e) {}
+      document.getElementById('modalMeta').textContent = JSON.stringify(meta, null, 2);
+      document.getElementById('modalOverlay').classList.add('open');
+    }
+
+    function closeModal(e) {
+      if (e.target === document.getElementById('modalOverlay')) closeModalDirect();
+    }
+    function closeModalDirect() {
+      document.getElementById('modalOverlay').classList.remove('open');
+    }
+
+    function exportCsv() {
+      const tid = tenantId();
+      if (!tid || !currentApiKey) { showToast('Load a tenant first'); return; }
+      // Create a temporary link with the API key in a header — can't do header in browser link,
+      // so we fetch and create a blob URL instead
+      fetch(`${API}/tenants/${tid}/anomalies/export`, { headers: apiHeaders() })
+        .then(r => {
+          if (!r.ok) throw new Error('Export failed');
+          return r.blob();
+        })
+        .then(blob => {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `anomalies_${new Date().toISOString().slice(0,10)}.csv`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        })
+        .catch(() => showToast('Export failed — check API key'));
+    }
+
+    // On load, auto-load if tenantId is set in URL params
+    const params = new URLSearchParams(location.search);
+    const urlTenant = params.get('tenant');
+    if (urlTenant) {
+      document.getElementById('tenantId').value = urlTenant;
+      loadAll();
+    }
+  </script>
+</body>
+</html>
