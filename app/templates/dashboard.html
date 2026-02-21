@@ -106,6 +106,7 @@
       </div>
       <div class="api-key-row" style="margin-top:0.75rem;">
         <label>API Key</label>
+        <input type="password" id="apiKeyInput" placeholder="Paste key (from create or rotate)" style="flex:1; max-width:400px;" title="API key is only shown once when you create a tenant or rotate the key" />
         <div class="code-block" id="apiKeyDisplay" onclick="copyApiKey()" title="Click to copy">—</div>
       </div>
     </div>
@@ -215,8 +216,9 @@
       const t = await r.json();
       document.getElementById('tenantId').value = t.id;
       currentApiKey = t.api_key || '';
+      document.getElementById('apiKeyInput').value = '';
       document.getElementById('apiKeyDisplay').textContent = currentApiKey || '—';
-      showToast(`Tenant #${t.id} created. API key saved.`);
+      showToast(`Tenant #${t.id} created. Copy the API key now — it won't be shown again.`);
       loadAll();
     }
 
@@ -268,15 +270,12 @@
     async function loadAll() {
       const tid = tenantId();
       if (!tid) return;
-      // Try to get API key from tenant if not set
+      // API key is never returned by GET tenant (security). Use pasted key or the one from create/rotate.
       if (!currentApiKey) {
-        const r = await fetch(`${API}/tenants/${tid}`);
-        if (r.ok) {
-          const t = await r.json();
-          if (t.api_key) {
-            currentApiKey = t.api_key;
-            document.getElementById('apiKeyDisplay').textContent = currentApiKey;
-          }
+        const fromInput = document.getElementById('apiKeyInput').value.trim();
+        if (fromInput) {
+          currentApiKey = fromInput;
+          document.getElementById('apiKeyDisplay').textContent = '••••••••';
         }
       }
       loadDashboard();

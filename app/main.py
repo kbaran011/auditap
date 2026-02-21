@@ -10,6 +10,8 @@ from fastapi.responses import RedirectResponse
 
 from app.api.routes import router
 from app.database import init_db
+from app.config import settings
+from app.middleware.rate_limit import RateLimitMiddleware
 
 # Configure structured logging at startup
 logging.config.dictConfig({
@@ -51,6 +53,14 @@ app = FastAPI(
     description="Read-only audit layer for accounts payable — find duplicate invoices, price creep, and leaks.",
     version="0.2.0",
     lifespan=lifespan,
+)
+
+# Rate limiting: IP-based and user-based (X-API-Key) to prevent abuse (OWASP API4:2019)
+app.add_middleware(
+    RateLimitMiddleware,
+    requests_per_minute_ip=settings.rate_limit_requests_per_minute_ip,
+    requests_per_minute_user=settings.rate_limit_requests_per_minute_user,
+    exempt_paths=["/health", "/"],
 )
 
 app.include_router(router, prefix="/api", tags=["api"])

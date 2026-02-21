@@ -5,7 +5,7 @@ import logging
 import secrets
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi.responses import RedirectResponse, StreamingResponse
 from sqlalchemy import func, distinct
 from sqlalchemy.orm import Session
@@ -13,9 +13,19 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Tenant, Bill, Vendor, Anomaly
 from app.schemas import (
-    TenantCreate, TenantOut, AnomalyOut, AnomalyUpdate,
-    ConnectQBOBody, SyncResult, DetectionResult, DashboardStats,
+    TenantCreate,
+    TenantOut,
+    TenantCreateResponse,
+    TenantRotateKeyResponse,
+    AnomalyOut,
+    AnomalyUpdate,
+    ConnectQBOBody,
+    QBOCallbackQuery,
+    SyncResult,
+    DetectionResult,
+    DashboardStats,
 )
+from app.schemas import MAX_LEN_OAUTH_CODE, MAX_LEN_STATE, MAX_LEN_REALM_ID
 from app.api.auth import get_tenant_by_key
 from app.pipeline.sync import sync_tenant
 from app.detection.engine import run_detection
@@ -25,32 +35,54 @@ from app.alerts.email import send_anomaly_alert
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+# Path param validation: positive integer IDs (strict input validation, OWASP)
+TenantIdPath = Path(..., gt=0, description="Tenant ID (positive integer)")
+AnomalyIdPath = Path(..., gt=0, description="Anomaly ID (positive integer)")
+
+
+def get_qbo_callback_query(
+    code: str = Query(..., min_length=1, max_length=MAX_LEN_OAUTH_CODE),
+    state: str = Query("", max_length=MAX_LEN_STATE),
+    realm_id: str = Query("", max_length=MAX_LEN_REALM_ID),
+    realmId: str = Query("", max_length=MAX_LEN_REALM_ID),
+) -> QBOCallbackQuery:
+    """Dependency: validate OAuth callback query params with length limits (OWASP)."""
+    return QBOCallbackQuery(code=code, state=state, realm_id=realm_id, realmId=realmId)
+
 
 @router.get("/auth/qbo")
-def qbo_authorize(tenant_id: int = 1):
+def qbo_authorize(
+    tenant_id: int = Query(1, gt=0, le=2**31 - 1, description="Tenant ID for OAuth state"),
+):
     """Redirect user to QuickBooks OAuth authorization."""
     url = get_authorization_url(state=f"tenant_{tenant_id}")
     return RedirectResponse(url=url)
 
 
 @router.get("/auth/qbo/callback")
-def qbo_callback(code: str, state: str = "", realm_id: str = "", realmId: str = "", db: Session = Depends(get_db)):
+def qbo_callback(
+    query: QBOCallbackQuery = Depends(get_qbo_callback_query),
+    db: Session = Depends(get_db),
+):
     """Handle QuickBooks OAuth callback, store tokens, redirect to dashboard."""
+    state = query.state
     tenant_id = int(state.replace("tenant_", "")) if state and state.startswith("tenant_") else 1
-    token = exchange_code_for_tokens(code)
+    if tenant_id <= 0:
+        raise HTTPException(400, "Invalid state parameter")
+    token = exchange_code_for_tokens(query.code)
     t = db.query(Tenant).filter(Tenant.id == tenant_id).first()
     if not t:
         raise HTTPException(404, "Tenant not found")
-    t.accounting_realm_id = realm_id or realmId
+    t.accounting_realm_id = query.realm_id or query.realmId
     t.access_token = token["access_token"]
     t.refresh_token = token["refresh_token"]
     db.commit()
     return RedirectResponse(url=f"/?tenant={tenant_id}&connected=1")
 
 
-@router.post("/tenants", response_model=TenantOut)
+@router.post("/tenants", response_model=TenantCreateResponse)
 def create_tenant(data: TenantCreate, db: Session = Depends(get_db)):
-    """Create a tenant and generate an API key."""
+    """Create a tenant and generate an API key. API key is returned only in this response (secure handling)."""
     api_key = secrets.token_hex(32)
     t = Tenant(
         name=data.name,
@@ -62,20 +94,51 @@ def create_tenant(data: TenantCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(t)
     logger.info("Tenant created: id=%s name=%s", t.id, t.name)
-    return t
+    # Return create response with api_key only once (OWASP: never expose keys in GET/list)
+    return TenantCreateResponse(
+        id=t.id,
+        name=t.name,
+        accounting_platform=t.accounting_platform,
+        accounting_realm_id=t.accounting_realm_id,
+        alert_email=t.alert_email,
+        api_key=api_key,
+    )
 
 
 @router.get("/tenants/{tenant_id}", response_model=TenantOut)
-def get_tenant(tenant_id: int, db: Session = Depends(get_db)):
+def get_tenant(
+    tenant_id: int = TenantIdPath,
+    db: Session = Depends(get_db),
+):
+    """Return tenant without api_key (key is never exposed on GET — secure API key handling)."""
     t = db.query(Tenant).filter(Tenant.id == tenant_id).first()
     if not t:
         raise HTTPException(404, "Tenant not found")
     return t
 
 
+@router.post("/tenants/{tenant_id}/rotate-key", response_model=TenantRotateKeyResponse)
+def rotate_api_key(
+    tenant_id: int = TenantIdPath,
+    tenant: Tenant = Depends(get_tenant_by_key),
+    db: Session = Depends(get_db),
+):
+    """
+    Rotate API key for the tenant. Requires current X-API-Key.
+    New key is returned only in this response (key rotation — OWASP).
+    """
+    if tenant.id != tenant_id:
+        raise HTTPException(403, "Forbidden")
+    new_key = secrets.token_hex(32)
+    tenant.api_key = new_key
+    db.commit()
+    logger.info("API key rotated for tenant id=%s", tenant_id)
+    return TenantRotateKeyResponse(api_key=new_key)
+
+
 @router.post("/tenants/{tenant_id}/connect-qbo")
 def connect_qbo(
-    tenant_id: int,
+    tenant_id: int = TenantIdPath,
     body: ConnectQBOBody,
     tenant: Tenant = Depends(get_tenant_by_key),
     db: Session = Depends(get_db),
@@ -92,7 +155,7 @@ def connect_qbo(
 
 @router.post("/tenants/{tenant_id}/sync", response_model=SyncResult)
 def sync(
-    tenant_id: int,
+    tenant_id: int = TenantIdPath,
     tenant: Tenant = Depends(get_tenant_by_key),
     db: Session = Depends(get_db),
 ):
@@ -109,7 +172,7 @@ def sync(
 
 @router.post("/tenants/{tenant_id}/detect", response_model=DetectionResult)
 def detect(
-    tenant_id: int,
+    tenant_id: int = TenantIdPath,
     tenant: Tenant = Depends(get_tenant_by_key),
     db: Session = Depends(get_db),
 ):
@@ -146,9 +209,14 @@ def settings_smtp_enabled() -> bool:
 
 @router.get("/tenants/{tenant_id}/anomalies", response_model=list[AnomalyOut])
 def list_anomalies(
-    tenant_id: int,
-    status: str = Query(default="open", description="Filter by status: open, acknowledged, dismissed, all"),
-    limit: int = Query(default=100, le=500),
+    tenant_id: int = TenantIdPath,
+    status: str = Query(
+        default="open",
+        min_length=1,
+        max_length=32,
+        description="Filter: open, acknowledged, dismissed, all",
+    ),
+    limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     tenant: Tenant = Depends(get_tenant_by_key),
     db: Session = Depends(get_db),
@@ -164,6 +232,9 @@ def list_anomalies(
         .filter(Anomaly.tenant_id == tenant_id)
     )
 
+    # Strict status filter (valid set only)
+    if status not in ("open", "acknowledged", "dismissed", "all"):
+        raise HTTPException(400, "status must be one of: open, acknowledged, dismissed, all")
     if status != "all":
         q = q.filter(Anomaly.status == status)
 
@@ -180,8 +251,8 @@ def list_anomalies(
 
 @router.patch("/tenants/{tenant_id}/anomalies/{anomaly_id}", response_model=AnomalyOut)
 def update_anomaly(
-    tenant_id: int,
-    anomaly_id: int,
+    tenant_id: int = TenantIdPath,
+    anomaly_id: int = AnomalyIdPath,
     body: AnomalyUpdate,
     tenant: Tenant = Depends(get_tenant_by_key),
     db: Session = Depends(get_db),
@@ -189,9 +260,6 @@ def update_anomaly(
     """Update anomaly status (acknowledge or dismiss)."""
     if tenant.id != tenant_id:
         raise HTTPException(403, "Forbidden")
-    valid_statuses = {"open", "acknowledged", "dismissed"}
-    if body.status not in valid_statuses:
-        raise HTTPException(400, f"Invalid status. Must be one of: {', '.join(valid_statuses)}")
 
     anomaly = db.query(Anomaly).filter(
         Anomaly.id == anomaly_id,
@@ -210,7 +278,7 @@ def update_anomaly(
 
 @router.get("/tenants/{tenant_id}/anomalies/export")
 def export_anomalies(
-    tenant_id: int,
+    tenant_id: int = TenantIdPath,
     tenant: Tenant = Depends(get_tenant_by_key),
     db: Session = Depends(get_db),
 ):
@@ -257,7 +325,7 @@ def export_anomalies(
 
 @router.get("/tenants/{tenant_id}/dashboard", response_model=DashboardStats)
 def dashboard(
-    tenant_id: int,
+    tenant_id: int = TenantIdPath,
     tenant: Tenant = Depends(get_tenant_by_key),
     db: Session = Depends(get_db),
 ):

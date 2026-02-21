@@ -27,6 +27,7 @@ def seed():
         db.commit()
         db.refresh(t)
         print(f"Created tenant: {t.id}")
+        # API key printed only for local/demo; never log or expose in production
         print(f"API Key: {t.api_key}")
     else:
         if not t.api_key:
