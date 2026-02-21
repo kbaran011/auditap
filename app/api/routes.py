@@ -138,8 +138,8 @@ def rotate_api_key(
 
 @router.post("/tenants/{tenant_id}/connect-qbo")
 def connect_qbo(
-    tenant_id: int = TenantIdPath,
     body: ConnectQBOBody,
+    tenant_id: int = TenantIdPath,
     tenant: Tenant = Depends(get_tenant_by_key),
     db: Session = Depends(get_db),
 ):
@@ -251,9 +251,9 @@ def list_anomalies(
 
 @router.patch("/tenants/{tenant_id}/anomalies/{anomaly_id}", response_model=AnomalyOut)
 def update_anomaly(
+    body: AnomalyUpdate,
     tenant_id: int = TenantIdPath,
     anomaly_id: int = AnomalyIdPath,
-    body: AnomalyUpdate,
     tenant: Tenant = Depends(get_tenant_by_key),
     db: Session = Depends(get_db),
 ):
