@@ -41,17 +41,27 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_secrets(self):
-        """Fail fast in production if required credentials are missing (key rotation / .env)."""
+        """
+        Validate secrets in production. Logs warnings instead of raising so the app
+        can start (e.g. on Railway) before QBO/SMTP are configured.
+        Set REQUIRE_SECRETS=1 in .env to fail fast if credentials are missing.
+        """
+        import os
         if self.environment != "production":
             return self
+        require = os.getenv("REQUIRE_SECRETS", "0").lower() in ("1", "true", "yes")
         if not (self.qbo_client_id and self.qbo_client_secret):
-            raise ValueError(
-                "In production, QBO_CLIENT_ID and QBO_CLIENT_SECRET must be set in .env"
-            )
+            msg = "In production, set QBO_CLIENT_ID and QBO_CLIENT_SECRET for QuickBooks OAuth."
+            if require:
+                raise ValueError(msg)
+            import logging
+            logging.getLogger(__name__).warning(msg)
         if self.smtp_user and not self.smtp_password:
-            raise ValueError(
-                "In production, SMTP_PASSWORD must be set when SMTP_USER is set"
-            )
+            msg = "In production, set SMTP_PASSWORD when SMTP_USER is set."
+            if require:
+                raise ValueError(msg)
+            import logging
+            logging.getLogger(__name__).warning(msg)
         return self
 
 
